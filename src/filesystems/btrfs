@@ -1,0 +1,27 @@
+#!/bin/bash
+# Called: $0 (snapshot|remove) source target
+
+make_snapshot () {
+  # resolve source filesystem to a device
+  # create snapshot name with uuidgen
+  # create snapshot
+  # mount snapshot on target filesystem
+}
+
+remove_snapshot () {
+  # umount "$2""$1"
+  # remove device snapshot
+}
+
+check_ownership () {
+  # resolve mount to a device
+  # if device is btrfs snapshot, return 0
+  # else return 1
+}
+
+check_ownership "$3""$2" || exit 1
+case "$1" in
+  snapshot) make_snapshot "$2" "$3";;
+  remove) remove_snapshot "$2" "$3";;
+esac
+exit 0

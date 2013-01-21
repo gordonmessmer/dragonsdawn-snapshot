@@ -1,0 +1,33 @@
+#!/bin/bash
+# Called: $0 (quiesce|resume) source
+
+##
+# This matches the structure of the postgresql init script
+NAME=`basename $0`
+PGDATA=/var/lib/pgsql/data
+# Override defaults from /etc/sysconfig/pgsql if file is present
+[ -f /etc/sysconfig/pgsql/${NAME} ] && . /etc/sysconfig/pgsql/${NAME}
+##
+
+quiesce () {
+  su postgres -c "select pg_start_backup('system snapshot');"
+}
+
+resume () {
+  su postgres -c "select pg_stop_backup();"
+}
+
+check_ownership () {
+  test -e "$PGDATA" || return 1
+  datadev=$(stat --printf '%d' "$PGDATA")
+  argdev=$(stat --printf '%d' "$1")
+  test "$datadev" = "$argdev" && return 0
+  return 1
+}
+
+check_ownership "$2" || exit 1
+case "$1" in
+  quiesce) quiesce "$2";;
+  resume) resume "$2";;
+esac
+exit 0

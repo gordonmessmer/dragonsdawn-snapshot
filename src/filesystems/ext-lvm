@@ -1,0 +1,71 @@
+#!/bin/bash
+# Called: $0 (snapshot|remove) source target
+
+# min_size is the minimum amount of free space required in the volume group,
+# expressed as a percentage of the size of the filesystem being backed up.
+min_size=10
+
+declare -A dmdevs
+
+make_snapshot () {
+  while read device mount dummy
+  do
+    test "$mount" = "$1" || continue
+    break
+  done < /etc/mtab
+  d=$(readlink "$device")
+  device="${dmdevs[$d]}"
+  # $device and $mount now describe the device to snapshot
+  # determine size of filesystem
+  lvsize=$(lvs --noheadings --units m --nosuffix -o lv_size "${device:5}")
+  # check volume group free space
+  vgfree=$(vgs --noheadings --units m --nosuffix -o vg_free "${device%/*}")
+  # fail if free space is insufficient
+  test "$vgfree" -gt "$(( $lvsize * $min_size / 100 ))" || {
+    echo Not enough free space on "${device%/*}" for snapshot >&2
+    exit 1
+  }
+  # create snapshot name with uuidgen
+  uuid=$(uuidgen)
+  # create snapshot
+  lvcreate -s -n "${device##*/}-snap-${uuid}" -L "$(( $lvsize * $min_size / 100 ))"m "${device%/*}"
+  # mount snapshot on target filesystem
+  mount "${device%/*}/${device##*/}-snap-${uuid}" "$2""$1"
+}
+
+remove_snapshot () {
+  while read device mount dummy
+  do
+    test "$mount" = "$2""$1" || continue
+    umount "$2""$1"
+    lvchange -an "${device:5}"
+    lvremove "${device:5}"
+  done < /etc/mtab
+}
+
+check_ownership () {
+  test "$(stat --file-system --printf '%T' "$1")" = "ext2/ext3" || return 1
+  for vg in $(vgs --noheadings -o vg_name)
+  do
+    for x in /dev/"$vg"/*
+    do
+      y=$(readlink -f "$x")
+      dmdevs["$y"]="$x"
+    done
+  done
+  while read device mount dummy
+  do
+    test "$mount" = "$1" || continue
+    d=$(readlink -f "$device")
+    test -n "${dmdevs[$d]}" || return 1 # This filesystem isn't mounted on an LV
+    return 0
+  done < /etc/mtab
+  return 1
+}
+
+check_ownership "$2" || exit 1
+case "$1" in
+  snapshot) make_snapshot "$2" "$3";;
+  remove) remove_snapshot "$2" "$3";;
+esac
+exit 0

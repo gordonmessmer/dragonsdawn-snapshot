@@ -1,0 +1,143 @@
+#!/bin/bash
+
+base="/home/gordon/root/lib/snapshot"
+writers_d="$base/writers.d"
+devices_d="$base/devices.d"
+dir_d="$base/directories.d"
+fsystem_d="$base/filesystems.d"
+
+vflag="false"
+target="/mnt"
+declare -a source
+declare -a targetmounts
+declare -A snapshot
+
+warning () {
+  echo "$@" >&2
+}
+
+verbose () {
+  test "$vflag" = "true" && echo "$@" >&2
+}
+
+trap snapshot_exit SIGINT SIGTERM SIGHUP
+snapshot_exit () {
+  writers resume
+  snapshot_remove
+  exit 69
+}
+
+snapshot_remove () {
+  for x in "${source[@]}"
+  do
+    test -x "${snapshot[$x]}" || continue
+    verbose removing snapshot on "$target""$x" with "${snapshot[$x]}"
+    "${snapshot[$x]}" remove "$x" "$target"
+  done
+
+  test -n "$targetmounts" && {
+    verbose Removing mount point structure "$targetmounts"
+    rmdir $targetmounts
+  }
+}
+
+writers () {
+  for x in "$writers_d"/*
+  do
+    test -x "$x" || continue
+    for y in "${source[@]}"
+    do
+      verbose "$1" writer "$x" on "$y"
+      "$x" "$1" "$y"
+    done
+  done
+}
+
+validate_sources () {
+  for x in "${source[@]}"
+  do
+    test -e "$x" || { warning Nothing at "$x" ; exit 69 ; }
+    test "${x:0:1}" = "/" || { warning Sources must be a full path, beginning with / ; exit 69 ; }
+    test "$(expr "$x" : ".*/\.\.\$\|.*/\.\./")" = 0 || { warning Sources may not contain \"..\" ; exit 69 ; }
+  done
+}
+
+refine_sources () {
+  declare -A stmp
+  declare -A devices
+  while read device mount dummy
+  do
+    d=$(stat --printf '%d' "$mount")
+    devices[$d]="$mount"
+  done < /etc/mtab
+  for x in "${source[@]}"
+  do
+    d=$(stat --printf '%d' "$x")
+    stmp[$d]="${devices[$d]}"
+  done
+  source=( "${stmp[@]}" )
+}
+
+sources () {
+  for x in "${source[@]}"
+  do
+    # Create the directory structure needed to mount the snapshot and save
+    # the name of any directories that are created.
+    targetmounts="$targetmounts"" $(mkdir -p -v "$target""$x" | sed -e 's/^mkdir: created directory .//; s/.$//' | sort -r)"
+    verbose created new mount points: "$targetmounts"
+    # Search for a script that will create and mount a snapshot of the
+    # source filesystem.
+    for d in "$devices_d" "$dir_d" "$fsystem_d"
+    do
+      for y in "$d"/*
+      do
+        test -x "$y" || continue
+        verbose snapshot filesystem "$x" with "$y"
+        "$y" snapshot "$x" "$target" || continue
+        verbose snapshot of "$x" was successful
+        snapshot[$x]="$y"
+        continue 3
+      done
+    done
+    # If one of the snapshot scripts was successful, it will "continue" past this section.
+    warning Unable to make a snapshot for "$x", using bind mount instead.
+    mount "$x" "$target""$x" -o bind
+  done
+}
+
+set_target () {
+  test -d "$1" || { echo Target directory "$1" does not exist. >&2 ; exit 69 ; }
+  target="$1"
+}
+
+usage () {
+  cat <<EOF
+  Usage: $0 -t <target directory> [snapshot directories]
+EOF
+}
+
+while getopts ":vht:" opt; do
+  case $opt in
+    v) vflag="true"; verbose Operating in verbose mode ;;
+    t) set_target "$OPTARG" ;;
+    h) usage ; exit 0 ;;
+    \?) echo "Invalid option: -$OPTARG" >&2 ; usage ; exit 64 ;;
+    :) echo "Option -$OPTARG requires an argument." >&2 ; exit 64 ;;
+  esac
+done
+
+shift $((OPTIND - 1))
+source=( "$@" )
+validate_sources
+refine_sources
+
+writers quiesce
+sources snapshot
+writers resume
+
+# Inform the caller that the snapshot is ready.
+echo done
+# Wait for stdin to close.
+while read dummy; do : ; done
+
+snapshot_remove
