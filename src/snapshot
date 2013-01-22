@@ -1,6 +1,6 @@
 #!/bin/bash
 
-base="/home/gordon/root/lib/snapshot"
+base="/usr/lib/snapshot"
 writers_d="$base/writers.d"
 devices_d="$base/devices.d"
 dir_d="$base/directories.d"
