@@ -13,13 +13,13 @@ make_snapshot () {
     test "$mount" = "$1" || continue
     break
   done < /etc/mtab
-  d=$(readlink "$device")
+  d=$(readlink -f "$device")
   device="${dmdevs[$d]}"
   # $device and $mount now describe the device to snapshot
   # determine size of filesystem
-  lvsize=$(lvs --noheadings --units m --nosuffix -o lv_size "${device:5}")
+  lvsize=$(lvs --noheadings --units m --nosuffix -o lv_size "${device:5}" | cut -f1 -d.)
   # check volume group free space
-  vgfree=$(vgs --noheadings --units m --nosuffix -o vg_free "${device%/*}")
+  vgfree=$(vgs --noheadings --units m --nosuffix -o vg_free "${device%/*}" | cut -f1 -d.)
   # fail if free space is insufficient
   test "$vgfree" -gt "$(( $lvsize * $min_size / 100 ))" || {
     echo Not enough free space on "${device%/*}" for snapshot >&2
@@ -28,7 +28,7 @@ make_snapshot () {
   # create snapshot name with uuidgen
   uuid=$(uuidgen)
   # create snapshot
-  lvcreate -s -n "${device##*/}-snap-${uuid}" -L "$(( $lvsize * $min_size / 100 ))"m "${device%/*}"
+  lvcreate -s -n "${device##*/}-snap-${uuid}" -L "$(( $lvsize * $min_size / 100 ))"m "${device:5}"
   # mount snapshot on target filesystem
   mount "${device%/*}/${device##*/}-snap-${uuid}" "$2""$1"
 }
