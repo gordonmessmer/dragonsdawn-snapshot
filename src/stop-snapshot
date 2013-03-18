@@ -1,0 +1,6 @@
+#!/bin/bash
+
+termfd=/var/run/snapshot
+
+test -e "$termfd" || exit
+echo > "$termfd"

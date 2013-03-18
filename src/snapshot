@@ -157,6 +157,7 @@ writers resume
 
 # Inform the caller that the snapshot is ready.
 echo done
+exec 1>&-
 # Wait for stdin to close.
 while read dummy; do : ; done
 

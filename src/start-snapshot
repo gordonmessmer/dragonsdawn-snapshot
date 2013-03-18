@@ -1,0 +1,38 @@
+#!/usr/bin/python
+
+import errno
+import sys
+import os
+import subprocess
+import time
+
+termfd="/var/run/snapshot"
+try:
+    os.mkfifo(termfd)
+except OSError as e:
+    print "Fatal error: ",
+    if e.errno == errno.EEXIST:
+        print "snapshot appears to be running, %s exists" % termfd
+    else:
+        print "could not create %s" % termfd
+    sys.exit()
+
+s = subprocess.Popen(["./snapshot"] + sys.argv[1:],
+                     stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+for x in s.stdout.readlines():
+    time.sleep(.1)
+
+if os.fork():
+    sys.exit(0)
+
+f = open(termfd)
+for x in f.readlines():
+    time.sleep(.1)
+
+s.stdin.close()
+try:
+    s.wait()
+except OSError:
+    pass
+
+os.unlink(termfd)
