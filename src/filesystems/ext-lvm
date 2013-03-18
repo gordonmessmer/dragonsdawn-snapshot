@@ -36,10 +36,15 @@ make_snapshot () {
 remove_snapshot () {
   while read device mount dummy
   do
-    test "$mount" = "$2""$1" || continue
+    if test "$1" = "/"
+    then
+      test "$mount" = "$2" || continue
+    else
+      test "$mount" = "$2""$1" || continue
+    fi
     umount "$2""$1"
-    lvchange -an "${device:5}"
-    lvremove "${device:5}"
+    d=$(readlink -f "$device")
+    lvremove -f "${dmdevs[$d]:5}"
   done < /etc/mtab
 }
 
