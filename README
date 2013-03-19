@@ -1,0 +1,105 @@
+The most common configurations for servers running GNU/Linux operating
+systems support snapshots of filesystems.  Snapshots improve backups by
+providing data consistency.
+
+Without snapshots, backing up any file or set of files that are in
+active use may corrupt the data in the backup.  Consider a database
+server with multiple tables.  As a simplified example:
+
+ ID  |  Name
+ ----|-------------
+  1  |  Jim Stone
+  2  |  Aaron Kiln
+  3  |  Mark Dern
+
+ ID  |  Telephone
+ ----|-------------
+  1  |  555-3924
+  2  |  555-2858
+  3  |  555-0029
+
+If the column in the second table uses data from the first as a foreign
+key, and if the database server is instructed to remove Aaron from the
+database while a backup is running, it's possible for the backup to
+complete on the first table before that transaction is committed to
+disk, but for the deletion of both records to be written to disk before
+the second table is backed up.  Similar problems can affect the internal
+structure of a data file, or even unstructured data files.
+
+Another potential problem when backing up data is that the application
+may have data buffered in memory that it hasn't tried to write to disk
+yet. Typically the application will need to be signaled to flush its
+buffers.
+
+One common means of avoiding this problem is to instruct the application
+to dump the content of its database to plain text files, and to back
+those files up rather than the data files.  While this technique works,
+restoring data requires first restoring the text files, then instructing
+the server to load data from the text files.  The process of loading the
+data can be extremely slow, which is a significant drawback to this
+backup strategy.
+
+This project provides a common infrastructure for creating snapshots and
+signaling applications to make their data files consistent.
+
+The snapshot script will accept "-t path" as an option indicating a path
+where the snapshots should be mounted.  The remaining arguments indicate
+what directories are going to be backed up.
+
+snapshot will determine which filesystems contain the named directories
+and attempt to make snapshots of each.  snapshot will first run each of
+the scripts in its "writers.d" directory, signaling to applications that
+they should make their data consistent and stop writing new data. Next
+it will make snapshots of each of the filesystems containing the
+directories given as arguments.  When the snapshots have been made and
+mounted, snapshot will once again run the scripts in "writers.d" to
+notify applications that they can resume writing data.  At this point,
+the snapshot program will close its stdout.  Closing this file
+descriptor signals to the caller that the snapshots are ready.  snapshot
+will then wait for its stdin to be closed.  When that occurs, the
+snapshots will be umounted and removed.
+
+Any filesystem for which a snapshot cannot be created will be "bind"
+mounted in the target directory.  Data cannot be guaranteed consistent
+in these filesystems, but it will be available for backup as best as
+possible.
+
+For simple integration with snapshot, the start-snapshot and
+stop-snapshot scripts can be used.  start-snapshot will call snapshot
+and wait for stdout to close.  It will fork, disconnect from its
+controlling terminal, and continue running in the background.
+stop-snapshot will signal the running start-snapshot process, which will
+then close stdin.
+
+Backup applications should integrate directly with snapshot.  Direct
+integration means that if the backup application crashes, snapshots will
+be removed and unmounted.  start-snapshot is provided as a temporary
+solution for applications which are not yet integrated.
+
+snapshot is currently an early iteration, with some design issues that
+may be changed in upcoming releases.  Some of these are:
+
+devices.d and directories.d are provided to override the mechanisms
+provided for each filesystem type.  Currently these are unused, and it's
+not clear if there is a need for them.  These may be removed if no need
+is found.
+
+On the other hand, a new directory could be created to cache the mapping
+between the filesystem and the script that makes its snapshot,
+eliminating the loop used to find a suitable script.  When a successful
+snapshot is made, a symlink can be created to the script used.  On
+future runs, the link can be used.  If the linked script exits with a
+failure, the link would be removed and the loop used to locate a
+suitable script.
+
+The initial version of the software is written in bash, except for
+start-snapshot, which I don't believe can be written using only bash.  I
+hope that this will reduce any barriers to making this a standard system
+component.  As the project is very small, it could be trivially
+re-written in almost any language, and almost any other implementation
+would be faster.
+
+Currently, snapshots must be created and mounted read-write in case a
+subordinate filesystem requires directories to be created in which to
+mount it.  If snapshot simply created a full-system snapshot including
+all mounted filesystems, all snapshots could be mounted read-only.
