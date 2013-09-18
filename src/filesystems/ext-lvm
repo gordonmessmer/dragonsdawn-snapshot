@@ -29,6 +29,9 @@ make_snapshot () {
   uuid=$(uuidgen)
   # create snapshot
   lvcreate -s -n "${device##*/}-snap-${uuid}" -L "$(( $lvsize * $min_size / 100 ))"m "${device:5}"
+  # check for external journal and remove it if necessary
+  tune2fs -l "${device%/*}/${device##*/}-snap-${uuid}" | grep -q "^Journal device:" && \
+    tune2fs -O ^has_journal "${device%/*}/${device##*/}-snap-${uuid}"
   # mount snapshot on target filesystem
   mount "${device%/*}/${device##*/}-snap-${uuid}" "$2""$1"
 }
