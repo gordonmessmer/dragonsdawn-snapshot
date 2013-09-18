@@ -1,0 +1,44 @@
+#!python
+
+import select
+import sys
+import os
+import mysql
+
+def usage():
+    sys.stderr.write("Use: mysql-lock PATH [MY-CNF]\n"
+                     "  Where PATH is the path to a named pipe that mysql-lock will create\n"
+                     "  and wait for a newline to be written.\n")
+
+def flush_tables(dbcon):
+    dbcon.query('FLUSH TABLES WITH READ LOCK')
+
+def unlock_tables(dbcon):
+    dbcon.query('UNLOCK TABLES')
+
+def create_pipe_and_read(path):
+    os.mkfifo(path)
+    p = open(path, 'r')
+    ready = select.select([p], [], [], 600)
+    if not ready[0]:
+        sys.exit(75)
+    p.readline()
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        usage()
+        sys.exit(1)
+    my_cnf = "~/.my.cnf"
+    if len(sys.argv) == 3:
+       my_cnf = sys.argv[2]
+    dbcon = mysql.connect(read_default_file=my_cnf)
+    flush_tables(dbcon)
+    if os.fork():
+        os.exit()
+    # else
+    try:
+        create_pipe_and_read(sys.argv[1])
+    finally:
+        unlock_tables()
+        dbcon.close()
+    

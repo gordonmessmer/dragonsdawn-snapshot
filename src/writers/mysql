@@ -1,0 +1,37 @@
+#!/bin/bash
+# Called: $0 (quiesce|resume) source
+
+# Taken from the mysqld init script:
+get_mysql_option(){
+        result=`/usr/bin/my_print_defaults "$0" | sed -n "s/^--$2=//p" | tail -n 1`
+        if [ -z "$result" ]; then
+            # not found, use default
+            result="$3"
+        fi
+}
+
+get_mysql_option mysqld datadir "/var/lib/mysql"
+datadir="$result"
+
+quiesce () {
+  mysql-lock /var/run/mysql-lock
+}
+
+resume () {
+  echo > /var/run/mysql-lock
+}
+
+check_ownership () {
+  test -e "$datadir" || return 1
+  datadev=$(stat --printf '%d' "$datadir")
+  argdev=$(stat --printf '%d' "$1")
+  test "$datadev" = "$argdev" && return 0
+  return 1
+}
+
+check_ownership "$2" || exit 1
+case "$1" in
+  quiesce) quiesce "$2";;
+  resume) resume "$2";;
+esac
+exit 0
