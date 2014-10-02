@@ -122,6 +122,7 @@ sources () {
     # If one of the snapshot scripts was successful, it will "continue" past this section.
     warning Unable to make a snapshot for "$x", using bind mount instead.
     mount "$x" "$target""$x" -o bind
+    snapshot[$x]="${fsystem_d}/bind"
   done
 }
 

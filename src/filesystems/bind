@@ -1,0 +1,11 @@
+#!/bin/bash
+# Called: $0 (snapshot|remove) source target
+
+remove_snapshot () {
+  umount "$2""$1"
+}
+
+case "$1" in
+  remove) remove_snapshot "$2" "$3";;
+esac
+exit 1
