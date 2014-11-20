@@ -17,8 +17,8 @@ make_snapshot () {
   device="${dmdevs[$d]}"
   # $device and $mount now describe the device to snapshot
   # check for external journal; such a filesystem cannot be snapshotted
-  tune2fs -l "${device%/*}/${device##*/}-snap-${uuid}" | grep -q "^Journal device:" && {
-    echo Cannot snapshot "${device%/*}" due to external journal >&2
+  tune2fs -l "${device}" | grep -q "^Journal device:" && {
+    echo Cannot snapshot "${device}" due to external journal >&2
     exit 1
   }
   # determine size of filesystem
