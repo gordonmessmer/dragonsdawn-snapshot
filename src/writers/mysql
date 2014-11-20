@@ -1,6 +1,9 @@
 #!/bin/bash
 # Called: $0 (quiesce|resume) source
 
+# Require /usr/bin/my_print_defaults
+test -x /usr/bin/my_print_defaults || exit 1
+
 # Taken from the mysqld init script:
 get_mysql_option(){
         result=`/usr/bin/my_print_defaults "$0" | sed -n "s/^--$2=//p" | tail -n 1`
