@@ -1,22 +1,43 @@
 #!/bin/bash
 # Called: $0 (snapshot|remove) source target
 
+declare -A mounts
+
 make_snapshot () {
-  # resolve source filesystem to a device
   # create snapshot name with uuidgen
+  uuid=$(uuidgen)
   # create snapshot
+  btrfs subvolume snapshot "${1}" "${1}/${uuid}"
   # mount snapshot on target filesystem
+  mount -o bind "${1}/${uuid}" "$2""$1"
 }
 
 remove_snapshot () {
-  # umount "$2""$1"
-  # remove device snapshot
+  umount "$2""$1"
+  # get the volume name for the mounted snapshot from $mounts
+  if test "$1" = "/"
+  then
+    vpath="${mounts[${2}]}"
+  else
+    vpath="${mounts[${2}${1}]}"
+  fi
+  # the snapshot name is the uuid at the end of the volume name
+  snap="${vpath##*/}"
+  # use the volume name prefix to locate its mount point
+  vol="${vpath%/*}"
+  btrfs subvolume delete "${mounts[${vol}]}"/"$snap"
 }
 
 check_ownership () {
-  # resolve mount to a device
-  # if device is btrfs snapshot, return 0
-  # else return 1
+  test "$(stat --file-system --printf '%T' "$1")" = "btrfs" || return 1
+  # build an array of btrfs volumes for later use
+  while read d1 d2 d3 root mount d4 d5 d6 fstype dummy
+  do
+    test "$fstype" = "btrfs" || continue
+    mounts["$mount"]="$root"
+  done < /proc/self/mountinfo
+  # return, indicating ownership of this fs type
+  return 0
 }
 
 check_ownership "$3""$2" || exit 1
