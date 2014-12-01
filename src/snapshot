@@ -95,7 +95,7 @@ refine_sources () {
     d=$(stat --printf '%d' "$x")
     stmp[$d]="${devices[$d]}"
   done
-  source=( "${stmp[@]}" )
+  source=( $(printf "%s\n" "${stmp[@]}" | sort) )
 }
 
 sources () {
