@@ -1,0 +1,51 @@
+#!/bin/bash
+# Called: $0 (snapshot|remove) source target
+
+# See http://rajesh-joseph.blogspot.com/2014/10/gluster-volume-snapshot-howto.html
+# for a description of setting up gluster volumes that support snapshots.
+
+declare -A mounts
+
+make_snapshot () {
+  # create snapshot name with uuidgen
+  uuid=$(uuidgen)
+  # $source was set when reading mountinfo in check_ownership. It will resemble:
+  # <hostname>:<volume>
+  host="${source%:*}"
+  vol="${source#*:}"
+  # create snapshot
+  gluster snapshot create "$uuid" "$vol"
+  # mount snapshot on target filesystem
+  mount -t glusterfs "$host":/snaps/"$uuid"/"$vol" "$2""$1"
+}
+
+remove_snapshot () {
+  mpath="$(stat --printf '%m' "$2""$1")"
+  while read d1 d2 d3 root mount d4 d5 d6 fstype source dummy
+  do
+    test "$mount" = "$mpath" -a "$fstype" = "fuse.glusterfs" && break
+  done < /proc/self/mountinfo
+  umount "$2""$1"
+  # $source was set when reading mountinfo. It will resemble:
+  # <hostname>:/snaps/<snapshot>/<volume>
+  snap="${source##*/snaps/}"
+  snap="${snap%/*}"
+  yes | gluster snapshot delete "$snap"
+}
+
+check_ownership () {
+  test "$(stat --file-system --printf '%T' "$1")" = "fuseblk" || return 1
+  mpath="$(stat --printf '%m' "$1")"
+  while read d1 d2 d3 root mount d4 d5 d6 fstype source dummy
+  do
+    test "$mount" = "$mpath" -a "$fstype" = "fuse.glusterfs" && return 0
+  done < /proc/self/mountinfo
+  return 1
+}
+
+check_ownership "$2" || exit 1
+case "$1" in
+  snapshot) make_snapshot "$2" "$3";;
+  remove) remove_snapshot "$2" "$3";;
+esac
+exit 0
