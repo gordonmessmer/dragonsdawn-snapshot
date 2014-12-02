@@ -1,0 +1,45 @@
+#!/bin/bash
+# Called: $0 (snapshot|remove) source target
+
+declare -A mounts
+
+make_snapshot () {
+  # create snapshot name with uuidgen
+  uuid=$(uuidgen)
+  vol="${mounts[${1}]}"
+  # create snapshot
+  zfs snapshot "${vol}@${uuid}"
+  # mount snapshot on target filesystem
+  mount -t zfs "${vol}@${uuid}" "$2""$1"
+}
+
+remove_snapshot () {
+  umount "$2""$1"
+  # get the volume name for the mounted snapshot from $mounts
+  if test "$1" = "/"
+  then
+    vol="${mounts[${2}]}"
+  else
+    vol="${mounts[${2}${1}]}"
+  fi
+  zfs destroy "$vol"
+}
+
+check_ownership () {
+  test "$(stat --file-system --printf '%T' "$1")" = "zfs" || return 1
+  # build an array of btrfs volumes for later use
+  while read d1 d2 d3 root mount d4 d5 d6 fstype source dummy
+  do
+    test "$fstype" = "zfs" || continue
+    mounts["$mount"]="$source"
+  done < /proc/self/mountinfo
+  # return, indicating ownership of this fs type
+  return 0
+}
+
+check_ownership "$2" || exit 1
+case "$1" in
+  snapshot) make_snapshot "$2" "$3";;
+  remove) remove_snapshot "$2" "$3";;
+esac
+exit 0
