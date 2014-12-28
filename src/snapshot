@@ -1,32 +1,36 @@
 #!/bin/bash
 
 base="/usr/lib/snapshot"
-# Applications which need to be signaled should include a script
-# in the writers directory.
+# Applications which need to be signaled should include a script in
+# the writers directory.
 writers_d="$base/writers.d"
-# devices_d is used to override the snapshot mechanism for
-# specific device nodes.
+# devices_d is used to override the snapshot mechanism for specific
+# device nodes.
 devices_d="$base/devices.d"
 # dir_d is used to override the snapshot mechanism for specific
 # directories.
 dir_d="$base/directories.d"
-# fsystem_d is used for most mechanisms, creating snapshots for
-# all filesystems of a given type.
+# fsystem_d is used for most mechanisms, creating snapshots for all
+# filesystems of a given type.
 fsystem_d="$base/filesystems.d"
 
 vflag="false"
 target="/mnt"
-# The "source" array will initially be the list of directories
-# given as arguments which need to be backed up.  It will then
-# be refined to a shorter list of the filesystems which contain
-# those directories.
+# The "source" array will initially be the list of directories given
+# as arguments which need to be backed up.  It will then be refined to
+# a shorter list of the filesystems which contain those directories.
 declare -a source
-# The "targetmounts" array will contain a list of the directories
-# that are created to mount the snapshots.
+# The "targetmounts" array will contain a list of the directories that
+# are created to mount the snapshots.
+# FIXME: Some snapshots are always read-only, such as glusterfs The
+# targetmounts code should be replaced.  Instead, missing directories
+# should be mounted with tmpfs, where new directories can be reliably
+# created.  Those can be tracked in the "snapshot" array and discarded
+# by simply unmounting them.
 declare -a targetmounts
-# The "snapshot" array will contain a reference to the script
-# that created each snapshot.  It will be used to remove the
-# snapshots after the backup is complete.
+# The "snapshot" array will contain a reference to the script that
+# created each snapshot.  It will be used to remove the snapshots
+# after the backup is complete.
 declare -A snapshot
 
 warning () {
@@ -45,8 +49,8 @@ snapshot_exit () {
 }
 
 snapshot_remove () {
-  # Snapshots need to be unmounted and removed in the order
-  # reverse of that in which they were created and mounted.
+  # Snapshots need to be unmounted and removed in the order reverse of
+  # that in which they were created and mounted.
   for i in $(seq $((${#source[@]}-1)) -1 0 )
   do
     x="${source[i]}"
@@ -62,6 +66,9 @@ snapshot_remove () {
 }
 
 writers () {
+  # Loop through the writers scripts.  For each, then loop through the
+  # list of filesystems to be snapshotted. The writer should quiesce
+  # if its data is on the given fs.
   for x in "$writers_d"/*
   do
     test -x "$x" || continue
@@ -74,6 +81,8 @@ writers () {
 }
 
 validate_sources () {
+  # Loop through the paths given to snapshot.  Exit if any one does
+  # not exist or if it is not valid.
   for x in "${source[@]}"
   do
     test -e "$x" || { warning Nothing at "$x" ; exit 69 ; }
@@ -83,6 +92,16 @@ validate_sources () {
 }
 
 refine_sources () {
+  # Build the "source" array.  In order to avoid making multiple
+  # snapshots from a single device, first build a list of devices that
+  # are mounted in the filesystem.
+  # Then, loop through the filesystems given as arguments.  For each,
+  # determine which device is used for that filesystem and make a new
+  # list with the last location in mtab where that device is mounted.
+  # That list uses the device as a key and path as a value, so that
+  # each device will appear in the list only once.
+  # Finally, replace "source" with a sorted list of paths from the
+  # previous step.
   declare -A stmp
   declare -A devices
   while read device mount dummy
@@ -101,8 +120,8 @@ refine_sources () {
 sources () {
   for x in "${source[@]}"
   do
-    # Create the directory structure needed to mount the snapshot and save
-    # the name of any directories that are created.
+    # Create the directory structure needed to mount the snapshot and
+    # save the name of any directories that are created.
     targetmounts+=($(mkdir -p -v "$target""$x" | sed -e 's/^mkdir: created directory .//; s/.$//' | sort -r))
     verbose created new mount points: "${targetmounts[@]}"
     # Search for a script that will create and mount a snapshot of the
@@ -113,13 +132,18 @@ sources () {
       do
         test -x "$y" || continue
         verbose snapshot filesystem "$x" with "$y"
+	# Run the script, continue to the next snapshot script if it
+	# is is not successful.
         "$y" snapshot "$x" "$target" || continue
         verbose snapshot of "$x" was successful
         snapshot[$x]="$y"
+	# Continue the outer loop, moving on to the next "source"
+	# directory.
         continue 3
       done
     done
-    # If one of the snapshot scripts was successful, it will "continue" past this section.
+    # Execution will reach this point only if no snapshot script was
+    # successful for this "source" directory.
     warning Unable to make a snapshot for "$x", using bind mount instead.
     mount "$x" "$target""$x" -o bind
     snapshot[$x]="${fsystem_d}/bind"

@@ -25,20 +25,29 @@ def create_pipe_and_read(path):
     p.readline()
 
 if __name__ == '__main__':
+    # Require at least one argument, a path to a fifo which will
+    # be used to signal when the lock can be released.
     if len(sys.argv) < 2:
         usage()
         sys.exit(1)
+    # If a second argument is given, use it as the location of
+    # my_cnf
     my_cnf = "~/.my.cnf"
     if len(sys.argv) == 3:
        my_cnf = sys.argv[2]
+    # Connect to the database and acquire a lock.
     dbcon = mysql.connect(read_default_file=my_cnf)
     flush_tables(dbcon)
+    # fork and continue running in the background.  The parent
+    # process will exit.
     if os.fork():
         os.exit()
-    # else
+    # Create the fifo and wait for it to be opened, and then closed.
+    # Locks only need to be held while the filesystem snapshots are
+    # created, so a fairly short timeout is used.
     try:
         create_pipe_and_read(sys.argv[1])
     finally:
         unlock_tables()
         dbcon.close()
-    
+

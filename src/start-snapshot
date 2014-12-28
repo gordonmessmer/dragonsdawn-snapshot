@@ -6,6 +6,9 @@ import os
 import subprocess
 import time
 
+# termfd is a path at which a fifo will be created.
+# This script will wait for that fifo to be opened
+# and then closed, at which point it will exit.
 termfd="/var/run/snapshot"
 try:
     os.mkfifo(termfd)
@@ -17,18 +20,27 @@ except OSError as e:
         print "could not create %s" % termfd
     sys.exit()
 
+# Run the snapshot script with all arguments passed
+# to this one, and wait for its stdout to close.
 s = subprocess.Popen(["./snapshot"] + sys.argv[1:],
                      stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 for x in s.stdout.readlines():
     time.sleep(.1)
 
+# fork and run in the background.  The parent process
+# will exit.
 if os.fork():
     sys.exit(0)
 
+# open the fifo at "termfd."  Discard any data
+# read from it, and continue when it is closed
+# on the other end.
 f = open(termfd)
 for x in f.readlines():
     time.sleep(.1)
 
+# close the snapshot script's stdin to signal that
+# it should discard the snapshot and exit.
 s.stdin.close()
 try:
     s.wait()
