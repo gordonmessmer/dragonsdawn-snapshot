@@ -150,7 +150,8 @@ sources () {
 }
 
 set_target () {
-  test -d "$1" || { echo Target directory "$1" does not exist. >&2 ; exit 69 ; }
+  test -d "$1" || { warning Target directory "$1" does not exist. ; exit 69 ; }
+  test "$1" = "$(find "$1" -maxdepth 0 -empty -type d)" || { warning Target directory "$1" is not empty. ; exit 69 ; }
   target="$1"
 }
 
