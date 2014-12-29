@@ -20,14 +20,6 @@ target="/mnt"
 # as arguments which need to be backed up.  It will then be refined to
 # a shorter list of the filesystems which contain those directories.
 declare -a source
-# The "targetmounts" array will contain a list of the directories that
-# are created to mount the snapshots.
-# FIXME: Some snapshots are always read-only, such as glusterfs The
-# targetmounts code should be replaced.  Instead, missing directories
-# should be mounted with tmpfs, where new directories can be reliably
-# created.  Those can be tracked in the "snapshot" array and discarded
-# by simply unmounting them.
-declare -a targetmounts
 # The "snapshot" array will contain a reference to the script that
 # created each snapshot.  It will be used to remove the snapshots
 # after the backup is complete.
@@ -48,21 +40,30 @@ snapshot_exit () {
   exit 69
 }
 
+make_tmpfs () {
+  # Do nothing if the directory exists.  Otherwise, call make_tmpfs with the
+  # parent to ensure that it exists.  validate_sources will have verified that
+  # the source path existed when we started.  If this path does not exist in
+  # the target, then the parent is assumed to be empty/missing.  Mount a tmpfs
+  # there and create the directory given as an argument.
+  test -d "$target""$1" && return
+  make_tmpfs "$(dirname "$1")"
+  mount -t tmpfs none "$target""$(dirname "$1")"
+  mkdir "$target""$1"
+  verbose created new tmpfs mount for "$1"
+  # Record the new filesystem as one that needs to be unmounted.
+  snapshot["$(dirname "$1")"]="${fsystem_d}/bind"
+}
+
 snapshot_remove () {
   # Snapshots need to be unmounted and removed in the order reverse of
   # that in which they were created and mounted.
-  for i in $(seq $((${#source[@]}-1)) -1 0 )
+  for x in $(printf "%s\n" "${!snapshot[@]}" | sort -r)
   do
-    x="${source[i]}"
     test -x "${snapshot[$x]}" || continue
     verbose removing snapshot on "$target""$x" with "${snapshot[$x]}"
     "${snapshot[$x]}" remove "$x" "$target"
   done
-
-  test -n "$targetmounts" && {
-    verbose Removing mount point structure "${targetmounts[@]}"
-    rmdir ${targetmounts[@]}
-  }
 }
 
 writers () {
@@ -120,10 +121,8 @@ refine_sources () {
 sources () {
   for x in "${source[@]}"
   do
-    # Create the directory structure needed to mount the snapshot and
-    # save the name of any directories that are created.
-    targetmounts+=($(mkdir -p -v "$target""$x" | sed -e 's/^mkdir: created directory .//; s/.$//' | sort -r))
-    verbose created new mount points: "${targetmounts[@]}"
+    # Create the directory structure needed to mount the snapshot
+    make_tmpfs "$x"
     # Search for a script that will create and mount a snapshot of the
     # source filesystem.
     for d in "$devices_d" "$dir_d" "$fsystem_d"
