@@ -35,7 +35,7 @@ verbose () {
 
 trap snapshot_exit SIGINT SIGTERM SIGHUP
 snapshot_exit () {
-  writers resume
+  writers thaw
   snapshot_remove
   exit 69
 }
@@ -67,17 +67,14 @@ snapshot_remove () {
 }
 
 writers () {
-  # Loop through the writers scripts.  For each, then loop through the
-  # list of filesystems to be snapshotted. The writer should quiesce
-  # if its data is on the given fs.
+  # Loop through the writers scripts.  For each, pass the list of
+  # filesystems to be snapshotted as arguments. The writer should
+  # quiesce if its data is on one of the given filesystems.
   for x in "$writers_d"/*
   do
     test -x "$x" || continue
-    for y in "${source[@]}"
-    do
-      verbose "$1" writer "$x" on "$y"
-      "$x" "$1" "$y"
-    done
+    verbose "$1" writer "$x" on "${source[@]}"
+    "$x" "$1" "${source[@]}"
   done
 }
 
@@ -176,9 +173,9 @@ source=( "$@" )
 validate_sources
 refine_sources
 
-writers quiesce
+writers freeze
 sources snapshot
-writers resume
+writers thaw
 
 # Inform the caller that the snapshot is ready.
 echo done
