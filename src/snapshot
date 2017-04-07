@@ -66,15 +66,27 @@ snapshot_remove () {
   done
 }
 
+# Check whether file $1 is a backup or rpm-generated file and should be ignored
+is_ignored_file() {
+  case "$1" in
+    *~ | *.bak | *.orig | *.rpmnew | *.rpmorig | *.rpmsave | *.sample)
+      return 0 ;;
+  esac
+  return 1
+}
+
 writers () {
   # Loop through the writers scripts.  For each, pass the list of
   # filesystems to be snapshotted as arguments. The writer should
   # quiesce if its data is on one of the given filesystems.
   for x in "$writers_d"/*
   do
+    is_ignored_file "$x" && continue
     test -x "$x" || continue
     verbose "$1" writer "$x" on "${source[@]}"
     "$x" "$1" "${source[@]}"
+    status=$?
+    verbose writer "$x" finished with status="$status"
   done
 }
 
