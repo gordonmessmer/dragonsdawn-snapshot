@@ -11,7 +11,19 @@ FIFO=/var/run/mysql-flush.fifo
 # Check mysql is installed and the server running
 [ -x "$MYSQL" ] && "$MYSQL" $MYSQL_OPTS < /dev/null || exit 0
 
-flush_and_wait() {
+# Require /usr/bin/my_print_defaults
+test -x /usr/bin/my_print_defaults || exit 1
+
+# Taken from the mysqld init script:
+get_mysql_option () {
+    result=$(/usr/bin/my_print_defaults "$1" | sed -n "s/^--$2=//p" | tail -n 1)
+    if [ -z "$result" ]; then
+        # not found, use default
+        result="$3"
+    fi
+}
+
+flush_and_wait () {
     printf "FLUSH TABLES WITH READ LOCK \\G\n"
     trap 'printf "$(date): $0 is killed\n">&2' HUP INT QUIT ALRM TERM
     read < $FIFO
@@ -19,6 +31,27 @@ flush_and_wait() {
     rm -f $FIFO
 }
 
+check_ownership () {
+    # The first argument is unused
+    shift
+    # If there are no remaining arguments, assume we are freezing a
+    # filesystem that contains our data.
+    test "$#" = 0 && return 0
+    # Otherwise, check for the MySQL data in the remaining paths given
+    # as arguments.
+    get_mysql_option mysqld datadir "/var/lib/mysql"
+    datadir="$result"
+
+    for path in "$@"
+    do
+        datadev=$(stat --printf '%d' "$datadir")
+        argdev=$(stat --printf '%d' "$1")
+        test "$datadev" = "$argdev" && return 0
+    done
+    return 1
+}
+
+check_ownership "$@" || exit 1
 case "$1" in
     freeze)
         mkfifo $FIFO || exit 1
