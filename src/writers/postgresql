@@ -9,25 +9,35 @@ PGDATA=/var/lib/pgsql/data
 [ -f /etc/sysconfig/pgsql/${NAME} ] && . /etc/sysconfig/pgsql/${NAME}
 ##
 
-quiesce () {
+freeze () {
   su postgres -c "select pg_start_backup('system snapshot');"
 }
 
-resume () {
+thaw () {
   su postgres -c "select pg_stop_backup();"
 }
 
 check_ownership () {
+  # The first argument is unused
+  shift
+  # If there are no remaining arguments, assume we are freezing a
+  # filesystem that contains our data.
+  test "$#" = 0 && return 0
+  # Otherwise, check for the data in the remaining paths given
+  # as arguments.
   test -e "$PGDATA" || return 1
-  datadev=$(stat --printf '%d' "$PGDATA")
-  argdev=$(stat --printf '%d' "$1")
-  test "$datadev" = "$argdev" && return 0
+  for path in "$@"
+  do
+    datadev=$(stat --printf '%d' "$PGDATA")
+    argdev=$(stat --printf '%d' "$1")
+    test "$datadev" = "$argdev" && return 0
+  done
   return 1
 }
 
-check_ownership "$2" || exit 1
+check_ownership "$@" || exit 1
 case "$1" in
-  quiesce) quiesce "$2";;
-  resume) resume "$2";;
+  freeze) freeze "$2";;
+  thaw) thaw "$2";;
 esac
 exit 0
