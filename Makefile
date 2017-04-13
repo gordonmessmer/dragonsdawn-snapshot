@@ -7,5 +7,5 @@ install:
 	install -t $(ROOTDIR)/filesystems.d src/filesystems/*
 	install -d $(ROOTDIR)/writers.d
 	install -t $(ROOTDIR)/writers.d src/writers/*
-	install -t $(SBINDIR) src/snapshot src/start-snapshot src/stop-snapshot src/mysql-lock
+	install -t $(SBINDIR) src/snapshot src/start-snapshot src/stop-snapshot
 	ln -s      $(ROOTDIR)/writers.d /etc/qemu/fsfreeze-hook.d
