@@ -1,6 +1,88 @@
+What is this project?
+---------------------
+
+QEMU provides a guest agent that can be used to freeze application
+data on disk, to ensure consistent backups.  The agent freezes
+application data, then a snapshot is made of the virtual machine's
+backing store, and then the agent thaws application data.  This
+process ensures that any performance impact of freezing data is as
+brief as possible.
+
+This project complements the QEMU guest agent by providing similar and
+compatible infrastructure for hosts that are backed up by a backup
+agent within the OS.
+
+What does "snapshot" do?
+------------------------
+
+snapshot will determine which filesystems contain the named
+directories and attempt to make snapshots of each.  It will first run
+each of the scripts in its "writers.d" directory with the argument
+"freeze" followed by a list of directories being backed up, signaling
+to applications that they should make their data consistent and stop
+writing new data. Next it will make snapshots of each of the
+filesystems containing the directories given as arguments.  When the
+snapshots have been made and mounted, snapshot will once again run the
+scripts in "writers.d" with the argument "thaw" to notify applications
+that they can resume writing data.  At this point, the snapshot
+program will close its stdout.  Closing this file descriptor signals
+to the caller that the snapshots are ready.  snapshot will then wait
+for its stdin to be closed.  When that occurs, the snapshots will be
+umounted and removed.
+
+How do I use "snapshot" in my backup application?
+-------------------------------------------------
+
+For simple integration with snapshot, you can call start-snapshot
+before beginning a backup, and stop-snapshot after the backup is
+complete.
+
+The "snapshot" script is the preferred means of integration.  Direct
+integration means that if the backup application crashes, snapshots
+will be removed and unmounted, automatically.
+
+The snapshot script will accept "-t path" as an option indicating a
+path where the snapshots should be mounted.  This path is the
+"target".  The remaining arguments indicate what directories are going
+to be backed up.
+
+After calling snapshot, the backup application should wait for the
+stdout file descriptor to close.  The backup application should then
+procede to back up its desired directories, treating the target (which
+defaults to /mnt) as the root directory.
+
+When backup are complete, the backup application should close
+snapshot's stdin file descriptor and wait for it to exit.
+
+How do I freeze a server's data during the snapshot process?
+------------------------------------------------------------
+
+Place an executable script or binary in /usr/lib/snapshot/writers.d
+which takes "freeze" or "thaw" as an argument, and optionally takes
+additional arguments following "freeze" which name directories which
+will be backed up.
+
+The directory /etc/qemu/fsfreeze-hooks.d is also supported, for
+compatibility with the QEMU fsfreeze agent, but the former location is
+preferred.  FHS forbids binaries in /etc.
+
+When the script or binary in writers.d is called with the "freeze"
+argument, it should signal to its server that data should be flushed
+to disk in preparation for a backup.  Optionally, it can examine
+arguments following "freeze" to determine if the server's data is
+going to be backed up, and may avoid flushing data if the server's
+data isn't part of the backup set.  However, if no arguments follow
+"freeze", the script should assume that flushing data is necessary.
+
+When the script or binary is called with the "thaw" argument, it
+should signal to the server that it can resume normal operation.
+
+Why do I care about snapshots?
+------------------------------
+
 The most common configurations for servers running GNU/Linux operating
-systems support snapshots of filesystems.  Snapshots improve backups by
-providing data consistency.
+systems support snapshots of filesystems.  Snapshots improve backups
+by providing data consistency.
 
 Without snapshots, backing up any file or set of files that are in
 active use may corrupt the data in the backup.  Consider a database
@@ -18,84 +100,56 @@ server with multiple tables.  As a simplified example:
   2  |  555-2858
   3  |  555-0029
 
-If the column in the second table uses data from the first as a foreign
-key, and if the database server is instructed to remove Aaron from the
-database while a backup is running, it's possible for the backup to
-complete on the first table before that transaction is committed to
-disk, but for the deletion of both records to be written to disk before
-the second table is backed up.  Similar problems can affect the internal
-structure of a data file, or even unstructured data files.
+If the column in the second table uses data from the first as a
+foreign key, and if the database server is instructed to remove Aaron
+from the database while a backup is running, it's possible for the
+backup to complete on the first table before that transaction is
+committed to disk, but for the deletion of both records to be written
+to disk before the second table is backed up.  Similar problems can
+affect the internal structure of a data file, or even unstructured
+data files.
 
 Another potential problem when backing up data is that the application
 may have data buffered in memory that it hasn't tried to write to disk
 yet. Typically the application will need to be signaled to flush its
 buffers.
 
-One common means of avoiding this problem is to instruct the application
-to dump the content of its database to plain text files, and to back
-those files up rather than the data files.  While this technique works,
-restoring data requires first restoring the text files, then instructing
-the server to load data from the text files.  The process of loading the
-data can be extremely slow, which is a significant drawback to this
-backup strategy.
+One common means of avoiding this problem is to instruct the
+application to dump the content of its database to plain text files,
+and to back those files up rather than the data files.  While this
+technique works, restoring data requires first restoring the text
+files, then instructing the server to load data from the text files.
+The process of loading the data can be extremely slow, which is a
+significant drawback to that backup strategy.
 
-This project provides a common infrastructure for creating snapshots and
-signaling applications to make their data files consistent.
-
-The snapshot script will accept "-t path" as an option indicating a path
-where the snapshots should be mounted.  The remaining arguments indicate
-what directories are going to be backed up.
-
-snapshot will determine which filesystems contain the named directories
-and attempt to make snapshots of each.  snapshot will first run each of
-the scripts in its "writers.d" directory, signaling to applications that
-they should make their data consistent and stop writing new data. Next
-it will make snapshots of each of the filesystems containing the
-directories given as arguments.  When the snapshots have been made and
-mounted, snapshot will once again run the scripts in "writers.d" to
-notify applications that they can resume writing data.  At this point,
-the snapshot program will close its stdout.  Closing this file
-descriptor signals to the caller that the snapshots are ready.  snapshot
-will then wait for its stdin to be closed.  When that occurs, the
-snapshots will be umounted and removed.
+This project provides a common infrastructure for creating snapshots
+and signaling applications to make their data files consistent.
 
 Any filesystem for which a snapshot cannot be created will be "bind"
 mounted in the target directory.  Data cannot be guaranteed consistent
 in these filesystems, but it will be available for backup as best as
 possible.
 
-For simple integration with snapshot, the start-snapshot and
-stop-snapshot scripts can be used.  start-snapshot will call snapshot
-and wait for stdout to close.  It will fork, disconnect from its
-controlling terminal, and continue running in the background.
-stop-snapshot will signal the running start-snapshot process, which will
-then close stdin.
-
-Backup applications should integrate directly with snapshot.  Direct
-integration means that if the backup application crashes, snapshots will
-be removed and unmounted.  start-snapshot is provided as a temporary
-solution for applications which are not yet integrated.
-
 snapshot is currently an early iteration, with some design issues that
 may be changed in upcoming releases.  Some of these are:
 
 devices.d and directories.d are provided to override the mechanisms
-provided for each filesystem type.  Currently these are unused, and it's
-not clear if there is a need for them.  These may be removed if no need
-is found.
+provided for each filesystem type.  Currently these are unused, and
+it's not clear if there is a need for them.  These may be removed if
+no need is found.
 
-On the other hand, a new directory could be created to cache the mapping
-between the filesystem and the script that makes its snapshot,
-eliminating the loop used to find a suitable script.  When a successful
-snapshot is made, a symlink can be created to the script used.  On
-future runs, the link can be used.  If the linked script exits with a
-failure, the link would be removed and the loop used to locate a
-suitable script.
+On the other hand, a new directory could be created to cache the
+mapping between the filesystem and the script that makes its snapshot,
+eliminating the loop used to find a suitable script.  When a
+successful snapshot is made, a symlink can be created to the script
+used.  On future runs, the link can be used.  If the linked script
+exits with a failure, the link would be removed and the loop used to
+locate a suitable script.
 
 The initial version of the software is written in bash, except for
-start-snapshot, which I don't believe can be written using only bash.  I
-hope that this will reduce any barriers to making this a standard system
-component.  As the project is very small, it could be trivially
+start-snapshot, which I don't believe can be written using only bash.
+I hope that this will reduce any barriers to making this a standard
+system component.  As the project is very small, it could be trivially
 re-written in almost any language, and almost any other implementation
 would be faster.
 
