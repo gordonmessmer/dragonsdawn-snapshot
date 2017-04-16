@@ -48,7 +48,7 @@ to be backed up.
 
 After calling snapshot, the backup application should wait for the
 stdout file descriptor to close.  The backup application should then
-procede to back up its desired directories, treating the target (which
+proceed to back up its desired directories, treating the target (which
 defaults to /mnt) as the root directory.
 
 When backup are complete, the backup application should close

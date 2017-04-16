@@ -1,0 +1,103 @@
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook V3.1//EN">
+
+<!-- Copyright 2017 Gordon Messmer.  See COPYING for -->
+<!-- distribution information. -->
+
+<refentry id="snapshot">
+
+  <docinfo>
+    <title>snapshot</title>
+    <author>
+      <firstname>Gordon</firstname>
+      <surname>Messmer</surname>
+    </author>
+    <productname>snapshot infrastructure for backups</productname>
+  </docinfo>
+
+  <refmeta>
+    <refentrytitle>snapshot</refentrytitle>
+    <manvolnum>1</manvolnum>
+  </refmeta>
+
+  <refnamediv>
+    <refname>snapshot</refname>
+    <refpurpose>Create consistent snapshots for backups</refpurpose>
+  </refnamediv>
+
+  <refsynopsisdiv>
+    <cmdsynopsis>
+      <command>snapshot</command>
+
+      <arg><replaceable>-t path</replaceable></arg>
+      <arg choice=req><replaceable>source path</replaceable></arg>
+    </cmdsynopsis>
+  </refsynopsisdiv>
+
+  <refsect1 id='description'>
+
+    <title>DESCRIPTION</title>
+
+    <para><command>snapshot</command> will determine which filesystems
+    contain the named directories and attempt to make snapshots of
+    each.  It will first run each of the scripts in
+    its <filename>writers.d</filename> directory with the
+    argument <emphasis>freeze</emphasis> followed by a list of
+    directories being backed up, signaling to applications that they
+    should make their data consistent and stop writing new data. Next
+    it will make snapshots of each of the filesystems containing the
+    directories given as arguments.  When the snapshots have been made
+    and mounted, <command>snapshot</command> will once again run the
+    scripts in <filename>writers.d</filename> with the
+    argument <emphasis>thaw</emphasis> to notify applications that
+    they can resume writing data.  At this point,
+    the <command>snapshot</command> program will close its stdout.
+    Closing this file descriptor signals to the caller that the
+    snapshots are ready.  <command>snapshot</command> will then wait
+    for its stdin to be closed.  When that occurs, the snapshots will
+    be umounted and removed.</para>
+  </refsect1>
+
+  <refsect1 id='options'>
+    <title>OPTIONS</title>
+
+    <variablelist>
+      <varlistentry>
+	<term><option>-t</option><replaceable> path</replaceable></term>
+	<listitem>
+	  <para>Mount the snapshots under the named
+	  target <emphasis>path</emphasis> rather than the
+	  default, <emphasis>/mnt</emphasis>.</para>
+	</listitem>
+      </varlistentry>
+    </variablelist>
+
+    <para>Additional arguments specify the paths that will be backed up,
+    and which must appear in the snapshot target.</para>
+  </refsect1>
+
+  <refsect1 id='usage'>
+    <title>USAGE</title>
+
+    <para>The <command>snapshot</command> script will
+    accept <emphasis>-t path</emphasis> as an option indicating a path
+    where the snapshots should be mounted.  This path is the "target".
+    The remaining arguments indicate what directories are going to be
+    backed up.</para>
+
+    <para>After calling <command>snapshot</command>, the backup
+    application should wait for the stdout file descriptor to close.
+    The backup application should then proceed to back up its desired
+    directories, treating the target (which defaults
+    to <filename>/mnt</filename>) as the root directory.</para>
+
+    <para>When backup are complete, the backup application should
+    close <command>snapshot</command>'s stdin file descriptor and wait
+    for it to exit.</para>
+  </refsect1>
+
+  <refsect1 id='author'>
+    <title>AUTHOR</title>
+    <para>snapshot is copyleft 2017 by Gordon Messmer.</para>
+  </refsect1>
+
+</refentry>
