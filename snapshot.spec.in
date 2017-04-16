@@ -1,5 +1,5 @@
 Name:           snapshot
-Version:        0.1
+Version:        @VERSION@
 Release:        1%{?dist}
 Summary:        Snapshot infrastructure for backups
 
